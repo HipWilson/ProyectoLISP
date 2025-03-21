@@ -12,8 +12,7 @@ public class LispFunction {
     }
 
     public Object apply(List<?> args, EntornoLisp env) {
-        // El primer elemento de args es el nombre de la función,
-        // así que debemos omitirlo al asociar argumentos con parámetros
+        // Verificar que el número de argumentos coincida con el número de parámetros
         if (args.size() - 1 != parametros.size()) {
             throw new ErrorLisp("Error: se esperaban " + parametros.size() + 
                               " argumentos, pero se recibieron " + (args.size() - 1));

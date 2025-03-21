@@ -20,12 +20,14 @@ public class EntornoLisp {
         this.entornoPadre = entornoPadre;
     }
 
+    // Método optimizado para evitar recursión excesiva
     public Object obtenerVariable(String nombre) {
-        if (tablaVariables.containsKey(nombre)) {
-            return tablaVariables.get(nombre);
-        }
-        if (entornoPadre != null) {
-            return entornoPadre.obtenerVariable(nombre);
+        EntornoLisp entornoActual = this;
+        while (entornoActual != null) {
+            if (entornoActual.tablaVariables.containsKey(nombre)) {
+                return entornoActual.tablaVariables.get(nombre);
+            }
+            entornoActual = entornoActual.entornoPadre;
         }
         throw new RuntimeException("Variable no encontrada: " + nombre);
     }
@@ -35,9 +37,16 @@ public class EntornoLisp {
         return valor;
     }
 
+    // Método optimizado para evitar recursión excesiva
     public boolean existeVariable(String nombre) {
-        return tablaVariables.containsKey(nombre) || 
-               (entornoPadre != null && entornoPadre.existeVariable(nombre));
+        EntornoLisp entornoActual = this;
+        while (entornoActual != null) {
+            if (entornoActual.tablaVariables.containsKey(nombre)) {
+                return true;
+            }
+            entornoActual = entornoActual.entornoPadre;
+        }
+        return false;
     }
 
     public String registrarFuncion(String nombre, List<String> parametros, Object cuerpo) {
@@ -45,19 +54,28 @@ public class EntornoLisp {
         return nombre;
     }
 
+    // Método optimizado para evitar recursión excesiva
     public DefinicionFuncion obtenerFuncion(String nombre) {
-        if (tablaFunciones.containsKey(nombre)) {
-            return tablaFunciones.get(nombre);
-        }
-        if (entornoPadre != null) {
-            return entornoPadre.obtenerFuncion(nombre);
+        EntornoLisp entornoActual = this;
+        while (entornoActual != null) {
+            if (entornoActual.tablaFunciones.containsKey(nombre)) {
+                return entornoActual.tablaFunciones.get(nombre);
+            }
+            entornoActual = entornoActual.entornoPadre;
         }
         throw new RuntimeException("Función no encontrada: " + nombre);
     }
 
+    // Método optimizado para evitar recursión excesiva
     public boolean existeFuncion(String nombre) {
-        return tablaFunciones.containsKey(nombre) || 
-               (entornoPadre != null && entornoPadre.existeFuncion(nombre));
+        EntornoLisp entornoActual = this;
+        while (entornoActual != null) {
+            if (entornoActual.tablaFunciones.containsKey(nombre)) {
+                return true;
+            }
+            entornoActual = entornoActual.entornoPadre;
+        }
+        return false;
     }
 
     public static class DefinicionFuncion {

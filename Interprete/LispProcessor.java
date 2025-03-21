@@ -21,6 +21,25 @@ public class LispProcessor {
     private void configurarContextoInicial() {
         globalContext.asignarVariable("verdadero", "t");
         globalContext.asignarVariable("falso", "nil");
+        
+        // Añadir una implementación iterativa de factorial
+        // Esta versión evita la recursión profunda que causa desbordamiento de pila
+        try {
+            String factorialIterativo = 
+                "(defun factorial (n) " +
+                    "(cond " +
+                        "((< n 0) 0) " +
+                        "((equal n 0) 1) " +
+                        "(t (setq resultado 1) " +
+                           "(setq i 1) " +
+                           "(while (<= i n) " +
+                              "(setq resultado (* resultado i)) " +
+                              "(setq i (+ i 1))) " +
+                           "resultado)))";
+            procesar(factorialIterativo);
+        } catch (Exception e) {
+            System.err.println("Error al configurar factorial: " + e.getMessage());
+        }
     }
 
     public Object procesar(String expresion) {
