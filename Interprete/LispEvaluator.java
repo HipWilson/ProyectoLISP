@@ -9,33 +9,21 @@ public class LispEvaluator {
 
     @FunctionalInterface
     private interface LispOperator {
-        Object apply(List<?> list, EntornoLisp env);
+        Object apply(List<?> list, EntornoLisp env, int depth);
     }
 
     private final Map<String, LispOperator> operators = new HashMap<>();
-    
-    // Control de recursión para evitar desbordamiento de pila
-    private int recursionDepth = 0;
-    private static final int MAX_RECURSION_DEPTH = 1000;
 
     public LispEvaluator() {
         // Formas especiales
         operators.put("quote", this::handleQuote);
         operators.put("setq", this::handleSetq);
         operators.put("defun", this::handleDefun);
-        //en mayusculas 
-        operators.put("DEFUN", this::handleDefun);
-        operators.put("SETQ", this::handleSetq);
-        operators.put("QUOTE", this::handleQuote);
-        //las demas 
         operators.put("cond", this::handleCond);
-        operators.put("COND", this::handleCond);
-        operators.put("WHILE", this::handleWhile);
-        operators.put("while", this::handleWhile);
 
         // Valores especiales
-        operators.put("t", (list, env) -> "t");
-        operators.put("nil", (list, env) -> "nil");
+        operators.put("t", (list, env, depth) -> "t");
+        operators.put("nil", (list, env, depth) -> "nil");
 
         // Operaciones aritméticas
         operators.put("+", this::evaluateAdd);
@@ -48,121 +36,49 @@ public class LispEvaluator {
         operators.put("=", this::evaluateEqual);
         operators.put("<", this::evaluateLessThan);
         operators.put(">", this::evaluateGreaterThan);
-        operators.put("<=", this::evaluateLessOrEqual);
-        operators.put(">=", this::evaluateGreaterOrEqual);
         operators.put("atom", this::evaluateAtom);
         operators.put("list", this::evaluateList);
     }
 
     public Object evaluate(Object expr, EntornoLisp env) {
-        // Implementación de evaluación con optimización de recursión de cola
-        return evaluateWithTailRecursion(expr, env);
+        return evaluate(expr, env, 0); // Iniciar con profundidad 0
     }
 
-    private Object evaluateWithTailRecursion(Object expr, EntornoLisp env) {
-        Object currentExpr = expr;
-        EntornoLisp currentEnv = env;
-        
-        while (true) {
-            // Incrementar contador de profundidad recursiva
-            recursionDepth++;
-            
-            // Verificar límite de recursión
-            if (recursionDepth > MAX_RECURSION_DEPTH) {
-                recursionDepth--;
-                throw new ErrorLisp("Error: Se ha excedido la profundidad máxima de recursión (" + MAX_RECURSION_DEPTH + ")");
-            }
-            
-            try {
-                if (currentExpr instanceof Number) return currentExpr;
-                if (currentExpr instanceof String) {
-                    String symbol = (String) currentExpr;
-                    return currentEnv.existeVariable(symbol) ? currentEnv.obtenerVariable(symbol) : symbol;
-                }
-                if (!(currentExpr instanceof List)) return currentExpr;
-
-                List<?> list = (List<?>) currentExpr;
-                if (list.isEmpty()) return list;
-
-                String operator = list.get(0).toString();
-                
-                // Caso especial para factorial recursivo
-                if (operator.equals("factorial") && list.size() == 2 && currentEnv.existeFuncion("factorial")) {
-                    // Implementación directa de factorial como un caso especial
-                    Number n = (Number) evaluateWithTailRecursion(list.get(1), currentEnv);
-                    int nValue = n.intValue();
-                    
-                    if (nValue < 0) return 0;
-                    if (nValue == 0) return 1;
-                    
-                    // Implementación iterativa de factorial en lugar de recursiva
-                    long result = 1;
-                    for (int i = 1; i <= nValue; i++) {
-                        result *= i;
-                    }
-                    return result;
-                }
-                
-                // Manejo de operadores estándar
-                LispOperator op = operators.get(operator);
-                if (op != null) {
-                    return op.apply(list, currentEnv);
-                }
-                
-                // Manejo de funciones definidas por el usuario con optimización de recursión de cola
-                if (currentEnv.existeFuncion(operator)) {
-                    EntornoLisp.DefinicionFuncion function = currentEnv.obtenerFuncion(operator);
-                    List<Object> evaluatedArgs = new ArrayList<>();
-                    
-                    // Evaluar argumentos
-                    for (int i = 1; i < list.size(); i++) {
-                        evaluatedArgs.add(evaluateWithTailRecursion(list.get(i), currentEnv));
-                    }
-                    
-                    // Verificar número correcto de argumentos
-                    if (evaluatedArgs.size() != function.getParametros().size()) {
-                        throw new ErrorLisp("Error: se esperaban " + function.getParametros().size() + 
-                                          " argumentos, pero se recibieron " + evaluatedArgs.size());
-                    }
-                    
-                    // Crear nuevo entorno para la función
-                    EntornoLisp newEnv = new EntornoLisp(currentEnv);
-                    
-                    // Asignar argumentos a parámetros
-                    for (int i = 0; i < function.getParametros().size(); i++) {
-                        newEnv.asignarVariable(function.getParametros().get(i), evaluatedArgs.get(i));
-                    }
-                    
-                    // Optimización de recursión de cola
-                    // En lugar de evaluar recursivamente, establecemos la nueva expresión y entorno
-                    currentExpr = function.getCuerpo();
-                    currentEnv = newEnv;
-                    continue; // Volver al inicio del bucle en lugar de llamar recursivamente
-                }
-                
-                // Si no es un operador conocido ni una función definida
-                throw new ErrorLisp("Error: operador o función desconocido: " + operator);
-            } finally {
-                recursionDepth--;
-            }
+    private Object evaluate(Object expr, EntornoLisp env, int depth) {
+        if (depth > 1000) {
+            throw new ErrorLisp("Se ha excedido la profundidad máxima de recursión (1000)");
         }
+
+        if (expr instanceof Number) return expr;
+        if (expr instanceof String) {
+            String symbol = (String) expr;
+            return env.existeVariable(symbol) ? env.obtenerVariable(symbol) : symbol;
+        }
+        if (!(expr instanceof List)) return expr;
+
+        List<?> list = (List<?>) expr;
+        if (list.isEmpty()) return list;
+
+        String operator = list.get(0).toString();
+        LispOperator op = operators.get(operator);
+        return (op != null) ? op.apply(list, env, depth + 1) : applyUserFunction(operator, list, env, depth + 1);
     }
 
-    private Object handleQuote(List<?> list, EntornoLisp env) {
+    private Object handleQuote(List<?> list, EntornoLisp env, int depth) {
         if (list.size() != 2) throw new ErrorLisp("Error: quote requiere exactamente un argumento");
         return list.get(1);
     }
 
-    private Object handleSetq(List<?> list, EntornoLisp env) {
+    private Object handleSetq(List<?> list, EntornoLisp env, int depth) {
         if (list.size() != 3) throw new ErrorLisp("Error: setq requiere exactamente dos argumentos");
         if (!(list.get(1) instanceof String)) throw new ErrorLisp("Error: el primer argumento de setq debe ser un símbolo");
 
         String variable = list.get(1).toString();
-        Object value = evaluate(list.get(2), env);
+        Object value = evaluate(list.get(2), env, depth + 1);
         return env.asignarVariable(variable, value);
     }
 
-    private Object handleDefun(List<?> list, EntornoLisp env) {
+    private Object handleDefun(List<?> list, EntornoLisp env, int depth) {
         if (list.size() != 4) throw new ErrorLisp("Error: defun requiere exactamente tres argumentos");
 
         String functionName = list.get(1).toString();
@@ -174,41 +90,43 @@ public class LispEvaluator {
         return env.registrarFuncion(functionName, params, list.get(3));
     }
 
-    private Object handleCond(List<?> list, EntornoLisp env) {
+    private Object handleCond(List<?> list, EntornoLisp env, int depth) {
         for (int i = 1; i < list.size(); i++) {
             if (!(list.get(i) instanceof List)) throw new ErrorLisp("Error: cláusula de cond debe ser una lista");
             List<?> clause = (List<?>) list.get(i);
             if (clause.size() != 2) throw new ErrorLisp("Error: cláusula de cond debe tener exactamente dos elementos");
 
-            if (isTrue(evaluate(clause.get(0), env))) return evaluate(clause.get(1), env);
+            Object condition = evaluate(clause.get(0), env, depth + 1);
+            if (isTrue(condition)) return evaluate(clause.get(1), env, depth + 1);
         }
         return "nil";
     }
-    
-    private Object handleWhile(List<?> list, EntornoLisp env) {
-        if (list.size() < 3) throw new ErrorLisp("Error: while requiere al menos una condición y un cuerpo");
-        
-        Object condicion = list.get(1);
-        Object result = "nil";
-        
-        while (isTrue(evaluate(condicion, env))) {
-            for (int i = 2; i < list.size(); i++) {
-                result = evaluate(list.get(i), env);
+
+    private Object evaluateAdd(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
+        if (args.isEmpty()) return 0.0;
+
+        double result = 0.0;
+        for (Object arg : args) {
+            if (!(arg instanceof Number)) {
+                throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + arg);
             }
+            result += ((Number) arg).doubleValue();
         }
-        
-        return result;
+        return simplifyNumber(result);
     }
 
-    private Object evaluateAdd(List<?> list, EntornoLisp env) {
-        return evaluateNumericOperation(list, env, 0, (a, b) -> a + b);
-    }
+    private Object evaluateSubtract(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
+        if (args.isEmpty()) throw new ErrorLisp("Error: - requiere al menos un argumento");
 
-    private Object evaluateSubtract(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
-        if (args.isEmpty()) return 0;
-        if (args.size() == 1) return -((Number) args.get(0)).doubleValue();
-        
+        if (args.size() == 1) {
+            if (!(args.get(0) instanceof Number)) {
+                throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + args.get(0));
+            }
+            return simplifyNumber(-((Number) args.get(0)).doubleValue());
+        }
+
         double result = ((Number) args.get(0)).doubleValue();
         for (int i = 1; i < args.size(); i++) {
             if (!(args.get(i) instanceof Number)) {
@@ -216,39 +134,56 @@ public class LispEvaluator {
             }
             result -= ((Number) args.get(i)).doubleValue();
         }
-        return result;
+        return simplifyNumber(result);
     }
 
-    private Object evaluateMultiply(List<?> list, EntornoLisp env) {
-        return evaluateNumericOperation(list, env, 1, (a, b) -> a * b);
+    private Object evaluateMultiply(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
+        if (args.isEmpty()) return 1.0;
+
+        double result = 1.0;
+        for (Object arg : args) {
+            if (!(arg instanceof Number)) {
+                throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + arg);
+            }
+            result *= ((Number) arg).doubleValue();
+        }
+        return simplifyNumber(result);
     }
 
-    private Object evaluateDivide(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
-        if (args.isEmpty()) return 1;
-        
+    private Object evaluateDivide(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
+        if (args.isEmpty()) throw new ErrorLisp("Error: / requiere al menos un argumento");
+
+        if (args.size() == 1) {
+            if (!(args.get(0) instanceof Number)) {
+                throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + args.get(0));
+            }
+            double value = ((Number) args.get(0)).doubleValue();
+            if (value == 0) throw new ErrorLisp("Error: división por cero");
+            return simplifyNumber(1.0 / value);
+        }
+
         double result = ((Number) args.get(0)).doubleValue();
         for (int i = 1; i < args.size(); i++) {
             if (!(args.get(i) instanceof Number)) {
                 throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + args.get(i));
             }
             double divisor = ((Number) args.get(i)).doubleValue();
-            if (divisor == 0) {
-                throw new ErrorLisp("Error: división por cero");
-            }
+            if (divisor == 0) throw new ErrorLisp("Error: división por cero");
             result /= divisor;
         }
-        return result;
+        return simplifyNumber(result);
     }
 
-    private Object evaluateEqual(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
+    private Object evaluateEqual(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
         if (args.size() != 2) throw new ErrorLisp("Error: equal requiere exactamente dos argumentos");
         return args.get(0).equals(args.get(1)) ? "t" : "nil";
     }
 
-    private Object evaluateLessThan(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
+    private Object evaluateLessThan(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
         if (args.size() != 2) throw new ErrorLisp("Error: < requiere exactamente dos argumentos");
         if (!(args.get(0) instanceof Number)) throw new ErrorLisp("Error: los argumentos de < deben ser números");
         if (!(args.get(1) instanceof Number)) throw new ErrorLisp("Error: los argumentos de < deben ser números");
@@ -258,8 +193,8 @@ public class LispEvaluator {
         return a < b ? "t" : "nil";
     }
 
-    private Object evaluateGreaterThan(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
+    private Object evaluateGreaterThan(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
         if (args.size() != 2) throw new ErrorLisp("Error: > requiere exactamente dos argumentos");
         if (!(args.get(0) instanceof Number)) throw new ErrorLisp("Error: los argumentos de > deben ser números");
         if (!(args.get(1) instanceof Number)) throw new ErrorLisp("Error: los argumentos de > deben ser números");
@@ -268,71 +203,61 @@ public class LispEvaluator {
         double b = ((Number) args.get(1)).doubleValue();
         return a > b ? "t" : "nil";
     }
-    
-    private Object evaluateLessOrEqual(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
-        if (args.size() != 2) throw new ErrorLisp("Error: <= requiere exactamente dos argumentos");
-        if (!(args.get(0) instanceof Number)) throw new ErrorLisp("Error: los argumentos de <= deben ser números");
-        if (!(args.get(1) instanceof Number)) throw new ErrorLisp("Error: los argumentos de <= deben ser números");
 
-        double a = ((Number) args.get(0)).doubleValue();
-        double b = ((Number) args.get(1)).doubleValue();
-        return a <= b ? "t" : "nil";
-    }
-    
-    private Object evaluateGreaterOrEqual(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
-        if (args.size() != 2) throw new ErrorLisp("Error: >= requiere exactamente dos argumentos");
-        if (!(args.get(0) instanceof Number)) throw new ErrorLisp("Error: los argumentos de >= deben ser números");
-        if (!(args.get(1) instanceof Number)) throw new ErrorLisp("Error: los argumentos de >= deben ser números");
-
-        double a = ((Number) args.get(0)).doubleValue();
-        double b = ((Number) args.get(1)).doubleValue();
-        return a >= b ? "t" : "nil";
-    }
-
-    private Object evaluateAtom(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
+    private Object evaluateAtom(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
         if (args.size() != 1) throw new ErrorLisp("Error: atom requiere exactamente un argumento");
         return !(args.get(0) instanceof List) ? "t" : "nil";
     }
 
-    private Object evaluateList(List<?> list, EntornoLisp env) {
-        List<Object> args = evaluateArguments(list, env);
+    private Object evaluateList(List<?> list, EntornoLisp env, int depth) {
+        List<Object> args = evaluateArguments(list, env, depth + 1);
         return args;
     }
 
-    private Object evaluateNumericOperation(List<?> list, EntornoLisp env, double identity, NumericOperator op) {
-        List<Object> args = evaluateArguments(list, env);
-        if (args.isEmpty()) return identity;
-
-        if (!(args.get(0) instanceof Number)) {
-            throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + args.get(0));
+    private Number simplifyNumber(double value) {
+        if (value == Math.floor(value)) {
+            return (int) value;
         }
-        
-        double result = ((Number) args.get(0)).doubleValue();
-        for (int i = 1; i < args.size(); i++) {
-            if (!(args.get(i) instanceof Number)) {
-                throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + args.get(i));
-            }
-            result = op.apply(result, ((Number) args.get(i)).doubleValue());
-        }
-        return result;
-    }
-
-    private interface NumericOperator {
-        double apply(double a, double b);
+        return value;
     }
 
     private boolean isTrue(Object value) {
         return value != null && !"nil".equals(value);
     }
 
-    private List<Object> evaluateArguments(List<?> list, EntornoLisp env) {
+    private List<Object> evaluateArguments(List<?> list, EntornoLisp env, int depth) {
         List<Object> evaluatedArgs = new ArrayList<>();
         for (int i = 1; i < list.size(); i++) {
-            evaluatedArgs.add(evaluate(list.get(i), env));
+            evaluatedArgs.add(evaluate(list.get(i), env, depth + 1));
         }
         return evaluatedArgs;
+    }
+
+    private Object applyUserFunction(String functionName, List<?> list, EntornoLisp env, int depth) {
+        if (!env.existeFuncion(functionName)) {
+            throw new ErrorLisp("Error: función " + functionName + " no definida");
+        }
+
+        EntornoLisp.DefinicionFuncion function = env.obtenerFuncion(functionName);
+        List<String> params = function.getParametros();
+        Object body = function.getCuerpo();
+
+        if (list.size() - 1 != params.size()) {
+            throw new ErrorLisp("Error: se esperaban " + params.size() +
+                              " argumentos, pero se recibieron " + (list.size() - 1));
+        }
+
+        // Crear un nuevo entorno para la ejecución de la función
+        EntornoLisp localEnv = new EntornoLisp(env);
+
+        // Evaluar argumentos y asignarlos a los parámetros
+        for (int i = 0; i < params.size(); i++) {
+            Object argValue = evaluate(list.get(i + 1), env, depth + 1);
+            localEnv.asignarVariable(params.get(i), argValue);
+        }
+
+        // Evaluar el cuerpo de la función en el entorno local
+        return evaluate(body, localEnv, depth + 1);
     }
 }
