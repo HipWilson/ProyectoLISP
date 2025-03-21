@@ -118,8 +118,8 @@ public class LispEvaluator {
     private Object evaluateLessThan(List<?> list, EntornoLisp env) {
         List<Object> args = evaluateArguments(list, env);
         if (args.size() != 2) throw new ErrorLisp("Error: < requiere exactamente dos argumentos");
-        if (args.get(0) instanceof Number) throw new ErrorLisp("Error: los argumentos de < deben ser números");
-        if (args.get(1) instanceof Number) throw new ErrorLisp("Error: los argumentos de < deben ser números");
+        if (!(args.get(0) instanceof Number)) throw new ErrorLisp("Error: los argumentos de < deben ser números");
+        if (!(args.get(1) instanceof Number)) throw new ErrorLisp("Error: los argumentos de < deben ser números");
 
         double a = ((Number) args.get(0)).doubleValue();
         double b = ((Number) args.get(1)).doubleValue();
@@ -129,8 +129,8 @@ public class LispEvaluator {
     private Object evaluateGreaterThan(List<?> list, EntornoLisp env) {
         List<Object> args = evaluateArguments(list, env);
         if (args.size() != 2) throw new ErrorLisp("Error: > requiere exactamente dos argumentos");
-        if (args.get(0) instanceof Number) throw new ErrorLisp("Error: los argumentos de > deben ser números");
-        if (args.get(1) instanceof Number) throw new ErrorLisp("Error: los argumentos de > deben ser números");
+        if (!(args.get(0) instanceof Number)) throw new ErrorLisp("Error: los argumentos de > deben ser números");
+        if (!(args.get(1) instanceof Number)) throw new ErrorLisp("Error: los argumentos de > deben ser números");
 
         double a = ((Number) args.get(0)).doubleValue();
         double b = ((Number) args.get(1)).doubleValue();
@@ -154,6 +154,9 @@ public class LispEvaluator {
 
         double result = ((Number) args.get(0)).doubleValue();
         for (int i = 1; i < args.size(); i++) {
+            if (!(args.get(i) instanceof Number)) {
+                throw new ErrorLisp("Error: se esperaba un número pero se encontró: " + args.get(i));
+            }
             result = op.apply(result, ((Number) args.get(i)).doubleValue());
         }
         return result;
@@ -175,9 +178,25 @@ public class LispEvaluator {
         return evaluatedArgs;
     }
 
-    private Object applyUserFunction(String functionName, List<?> args, EntornoLisp env) {
+    private Object applyUserFunction(String functionName, List<?> list, EntornoLisp env) {
+        if (!env.existeFuncion(functionName)) {
+            throw new ErrorLisp("Error: función " + functionName + " no definida");
+        }
+        
         EntornoLisp.DefinicionFuncion function = env.obtenerFuncion(functionName);
-        if (function == null) throw new ErrorLisp("Error: función " + functionName + " no definida");
-        return new LispFunction(function.getParametros(), function.getCuerpo()).apply(args, env);
+        List<Object> evaluatedArgs = new ArrayList<>();
+        
+        // Primero evaluar todos los argumentos
+        for (int i = 1; i < list.size(); i++) {
+            evaluatedArgs.add(evaluate(list.get(i), env));
+        }
+        
+        // Crear una lista con el nombre de la función como primer elemento
+        // seguido por los argumentos evaluados
+        List<Object> functionCallList = new ArrayList<>();
+        functionCallList.add(functionName);
+        functionCallList.addAll(evaluatedArgs);
+        
+        return new LispFunction(function.getParametros(), function.getCuerpo()).apply(functionCallList, env);
     }
 }

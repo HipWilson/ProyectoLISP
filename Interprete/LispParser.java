@@ -70,18 +70,14 @@ public class LispParser {
             String currentToken = tokens.get(position);
 
             if (currentToken.equals(")")) {
-                break;
+                position++;
+                return elements;
             }
 
             elements.add(parseExpression(tokens));
         }
 
-        if (position >= tokens.size() || !tokens.get(position).equals(")")) {
-            throw new RuntimeException("Se esperaba un paréntesis de cierre");
-        }
-
-        position++;
-        return elements;
+        throw new RuntimeException("Se esperaba un paréntesis de cierre");
     }
 
     private Number parseNumber(String token) {
